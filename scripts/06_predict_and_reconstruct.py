@@ -8,6 +8,18 @@ For now it uses row index 0 from the geometry and pressure DOE tables, predicts
 POD coefficients with the trained surrogate models, reconstructs fields with
 PCA inverse_transform, and compares the reconstructed fields with row 0 of the
 original snapshot matrices when those matrices are available.
+
+Beginner example:
+Take one row from doe.csv. Feed it into the trained model. The model predicts
+20 PCA coefficients. PCA then turns those 20 numbers back into a large pressure
+or geometry field.
+
+This is the first full digital twin proof:
+
+    small input row -> predicted full field
+
+Run from the project root after script 05:
+    python scripts/06_predict_and_reconstruct.py
 """
 
 # This import enables modern type-hint behavior.

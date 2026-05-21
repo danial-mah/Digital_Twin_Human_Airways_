@@ -1,7 +1,23 @@
 """Inspect the geometry and pressure datasets before processing.
 
-This script checks required files, summarizes snapshot folders, reads DOE CSV
-tables, reads JSON metadata, and prints a final readiness summary.
+Beginner explanation:
+This script is like a checklist before starting a laboratory experiment. It
+does not train a model and it does not change the dataset. It only checks that
+the important files exist and can be opened.
+
+What it checks:
+- Is there a Snapshots folder?
+- Is there a doe.csv table?
+- Is there a points.bin file?
+- Can settings.json and outputDefinition.json be read?
+
+Simple example:
+If the geometry folder has 100 snapshot files and a readable doe.csv file, the
+script prints that geometry looks ready. If points.bin is missing, it prints a
+warning instead of crashing.
+
+Run from the project root:
+    python scripts/01_check_dataset.py
 """
 
 # This import enables modern type-hint behavior.

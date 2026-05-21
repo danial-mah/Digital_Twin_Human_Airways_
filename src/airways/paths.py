@@ -6,6 +6,17 @@ Why this helps:
 - Many scripts need to know where `data/`, `outputs/`, and `outputs/models/` are.
 - If every script builds those paths by itself, mistakes become easy.
 - By keeping the paths here, every script can import the same trusted locations.
+
+Beginner example:
+Instead of writing this everywhere:
+
+    Path("outputs") / "models"
+
+we write:
+
+    from airways.paths import MODELS_DIR
+
+Then every file uses the same model folder path.
 """
 
 # This line allows Python type hints to be handled in a modern, flexible way.

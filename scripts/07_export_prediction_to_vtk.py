@@ -2,6 +2,18 @@
 
 This script creates PyVista PolyData point-cloud files. The saved .vtp files can
 be opened in ParaView to visualize predicted airway geometry and pressure.
+
+Beginner example:
+Python arrays are useful for computation, but ParaView cannot directly open a
+plain .npy prediction file. This script converts the predicted geometry and
+pressure into a .vtp file, which ParaView understands.
+
+What the VTP file contains:
+- points: x, y, z coordinates
+- pressure: one scalar value attached to each point, if dimensions match
+
+Run from the project root after script 06:
+    python scripts/07_export_prediction_to_vtk.py
 """
 
 # This import enables modern type-hint behavior.

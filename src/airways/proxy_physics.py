@@ -7,6 +7,21 @@ CFD, or Computational Fluid Dynamics, solves detailed fluid equations. This
 module does not do that. Instead, it computes simple numerical indicators from
 the predicted geometry and pressure arrays. These indicators are useful for a
 dashboard because they are fast, easy to understand, and help compare designs.
+
+Beginner example:
+If pressure values are:
+
+    [10, 20, 30]
+
+then:
+
+    pressure_min = 10
+    pressure_max = 30
+    pressure_mean = 20
+    pressure_range = 20
+
+For geometry, if the points can be reshaped into x, y, z coordinates, this
+module computes simple size and radius-like indicators.
 """
 
 # This line allows Python type hints to be handled in a modern, flexible way.

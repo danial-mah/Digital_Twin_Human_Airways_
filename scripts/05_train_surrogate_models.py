@@ -6,6 +6,22 @@ The purpose of this script is:
 
 It does not reconstruct full geometry or pressure fields. Reconstruction will
 come later by combining predicted POD coefficients with the saved PCA model.
+
+Beginner example:
+One DOE row may contain values such as airway lengths, angles, and inlet
+velocity. The target output is not the full pressure field. The target is the
+small PCA coefficient vector created by script 04.
+
+So the model learns a shortcut:
+
+    input parameters -> compressed simulation result
+
+Why this is called a surrogate:
+A surrogate model is a fast replacement for a slower simulation. It does not run
+CFD. It predicts what the compressed simulation output would look like.
+
+Run from the project root after script 04:
+    python scripts/05_train_surrogate_models.py
 """
 
 # This import enables modern type-hint behavior.

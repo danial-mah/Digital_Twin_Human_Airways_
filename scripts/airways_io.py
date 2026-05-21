@@ -3,6 +3,16 @@
 This file contains reusable functions for reading metadata, DOE tables, mesh
 points, and snapshot fields. Other scripts import these helpers so the dataset
 loading logic is written once instead of repeated in every script.
+
+Beginner example:
+Instead of writing "open settings.json" in five different scripts, we write one
+helper function here and reuse it. This makes the project easier to maintain.
+
+Think of this file as a small toolbox:
+- load_dataset() gets dataset metadata
+- load_doe() reads the input table
+- read_binary_field() reads one binary field file
+- load_snapshot_matrix() builds a matrix from many snapshots
 """
 
 # This import lets us write modern type hints, such as list[Path], in a way

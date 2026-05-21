@@ -2,6 +2,15 @@
 
 The app loads a saved model, creates sliders for the model input parameters,
 predicts an airway field, and visualizes the predicted values on the mesh.
+
+Beginner note:
+This is the first/simple Streamlit app created for the project. The newer and
+more complete presentation dashboard is:
+
+    app/airways_digital_twin_app.py
+
+This file is still useful as a smaller example of how a trained model can be
+loaded and connected to sliders.
 """
 
 # This import enables modern type-hint behavior.

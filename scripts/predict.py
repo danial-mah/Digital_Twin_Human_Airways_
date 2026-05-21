@@ -3,6 +3,15 @@
 This script loads one saved model from outputs/models/, builds one row of input
 parameters, predicts the compressed PCA coordinates, reconstructs the field,
 and saves the final predicted field as a NumPy .npy file.
+
+Beginner example:
+If you already trained a pressure model, this script can use one DOE row and
+create a predicted pressure field:
+
+    python scripts/predict.py --dataset pressure --doe-row 0
+
+This file is an earlier simple prediction script. The newer full pipeline uses
+scripts/06_predict_and_reconstruct.py for both geometry and pressure.
 """
 
 # This import enables modern type-hint behavior.

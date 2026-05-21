@@ -7,6 +7,21 @@ Run from the project root with:
 The app loads trained surrogate models and PCA models, maps DOE parameters to
 POD coefficients, reconstructs predicted geometry and pressure fields, computes
 simple proxy metrics, and optionally exports a ParaView-readable VTP file.
+
+Beginner example:
+Imagine a user moves a slider for an airway parameter. The app takes that value,
+sends it through the trained machine learning model, predicts PCA coefficients,
+and reconstructs the predicted pressure or geometry field.
+
+The dashboard does not run CFD. It uses trained models to make fast predictions.
+
+What the user sees:
+- input sliders
+- prediction shapes
+- pressure statistics
+- proxy physics metrics
+- projection plots and histograms
+- save/export buttons
 """
 
 # This import enables modern type-hint behavior.
@@ -478,6 +493,10 @@ def main() -> None:
     # Add a professional title and compact subtitle.
     st.title("Human Airways Digital Twin Dashboard")
     st.caption("DOE parameters -> surrogate models -> POD/PCA coefficients -> reconstructed airway fields")
+
+    # Add a visible top navigation button to the learning blog page.
+    # This is easier for beginners than searching for Streamlit's page list in the sidebar.
+    st.page_link("pages/01_Project_Blog.py", label="Open Project Blog", icon="📘")
 
     # Load trained models, scalers, and PCA objects.
     models = load_models()

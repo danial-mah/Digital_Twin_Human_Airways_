@@ -3,6 +3,21 @@
 The airway .bin files in this project are stored as float64 and contain one
 leading header value. For machine learning we read them correctly, remove the
 header, then optionally convert the cleaned values to float32.
+
+Beginner example:
+The wrong way for this dataset is:
+
+    np.fromfile(path, dtype=np.float32)
+
+The correct way is:
+
+    raw = np.fromfile(path, dtype=np.float64)
+    clean = raw[1:]
+    clean = clean.astype(np.float32)
+
+Why:
+The file was written as float64. If we read it as float32, the numbers become
+corrupted because Python splits each 8-byte value into two 4-byte pieces.
 """
 
 # This import enables modern type-hint behavior.

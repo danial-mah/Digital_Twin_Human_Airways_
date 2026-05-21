@@ -8,6 +8,25 @@ Important learning note:
 The raw binary snapshot files are stored as float64 and include one leading
 header value. We read them correctly as float64, remove the header with [1:],
 then convert the cleaned data to float32 before saving the matrix.
+
+Beginner example:
+Imagine you have 100 pressure simulations. Each simulation contains about
+2 million pressure values. This script turns those 100 files into one table:
+
+    rows = simulations
+    columns = pressure values
+
+So the matrix looks like:
+
+    pressure_matrix[0] = all pressure values from snapshot1
+    pressure_matrix[1] = all pressure values from snapshot2
+
+Why save as float32:
+float32 uses less disk and memory than float64. We still read the raw files as
+float64 first because that is the real dataset format, then convert safely.
+
+Run from the project root:
+    python scripts/03_build_snapshot_matrices.py
 """
 
 # This import enables modern type-hint behavior.

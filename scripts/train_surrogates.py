@@ -3,6 +3,16 @@
 This script reads geometry and/or pressure snapshots, compresses the high
 dimensional fields with PCA, trains a random forest to predict PCA coordinates
 from DOE parameters, and saves the trained model to outputs/models/.
+
+Beginner note:
+This was an earlier combined training script. Later, the workflow was split into
+clearer numbered steps:
+
+    03 builds matrices
+    04 trains PCA
+    05 trains surrogate models
+
+Keeping this file is still useful as a compact example of the same idea.
 """
 
 # This import enables modern type-hint behavior.

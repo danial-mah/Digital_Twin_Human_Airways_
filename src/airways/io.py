@@ -2,6 +2,10 @@
 
 Input/output, often shortened to I/O, means reading files from disk and writing
 files back to disk. These helpers keep common file-reading tasks in one place.
+
+Beginner example:
+If many scripts need to read `doe.csv`, we do not want each script to invent
+its own CSV reading method. We define load_doe() once here and reuse it.
 """
 
 # This line allows Python type hints to be handled in a modern, flexible way.

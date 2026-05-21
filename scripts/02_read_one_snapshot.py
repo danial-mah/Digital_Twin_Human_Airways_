@@ -1,8 +1,21 @@
 """Read one geometry and pressure snapshot to explore the binary format.
 
-This script is intentionally exploratory: it reads points.bin and the first
-snapshot file as float32 first, then also compares float64. The goal is to help
-us understand the real storage format before building processing code around it.
+Beginner explanation:
+Binary files are not human-readable like CSV files. We must guess or discover
+how the numbers are stored. This script reads one snapshot in different ways so
+we can see which interpretation makes sense.
+
+Simple example:
+Reading this dataset as float32 gives strange values and NaN. Reading it as
+float64 and skipping the first value gives realistic geometry and pressure
+values. That tells us the real format is float64 with one header value.
+
+Why this matters:
+If we read the binary file with the wrong type, every later step becomes wrong.
+PCA may fail, plots may look broken, and machine learning may train on garbage.
+
+Run from the project root:
+    python scripts/02_read_one_snapshot.py
 """
 
 # This import enables modern type-hint behavior.

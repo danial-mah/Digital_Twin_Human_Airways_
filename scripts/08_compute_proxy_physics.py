@@ -9,6 +9,17 @@ simple dashboard-friendly metrics, prints them, and saves them to a CSV file.
 
 Important:
 These metrics are proxy indicators, not real CFD simulation results.
+
+Beginner example:
+Instead of solving real airflow equations, this script asks simple questions:
+
+- What is the minimum predicted pressure?
+- What is the maximum predicted pressure?
+- How wide is the predicted geometry?
+- Is there a simple sign of constriction?
+
+These numbers are useful in a dashboard because they are quick to compute and
+easy to compare between different input parameters.
 """
 
 # This line allows Python type hints to be handled in a modern, flexible way.

@@ -6,6 +6,21 @@ snapshot using about 20 numbers that describe the strongest patterns of change.
 
 This script is memory-conscious: it loads .npy matrices with memory mapping and
 uses scikit-learn IncrementalPCA so rows can be processed in batches.
+
+Beginner example:
+Suppose one pressure snapshot has 2,135,906 values. That is too many values for
+a simple machine learning target. PCA compresses the snapshot into 20 values:
+
+    original pressure field -> 20 POD/PCA coefficients
+
+Those 20 coefficients are not random. They describe how much of each important
+pattern, or mode, exists in that snapshot.
+
+Later, the surrogate model predicts these 20 coefficients from DOE parameters.
+Then PCA can reconstruct the large field again.
+
+Run from the project root after script 03:
+    python scripts/04_pod_pca_compression.py
 """
 
 # This import enables modern type-hint behavior.
