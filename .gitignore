@@ -1,0 +1,49 @@
+# Python cache files generated when scripts are run.
+__pycache__/
+*.py[cod]
+
+# Local virtual environments.
+.venv/
+venv/
+env/
+
+# IDE and operating-system metadata.
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Large raw dataset binaries.
+# Keep these out of GitHub and share them separately.
+data/**/Snapshots/*
+data/**/points.bin
+!data/**/Snapshots/.gitkeep
+
+# Generated model, figure, prediction, and processed output files.
+outputs/geometry/*
+outputs/pressure/*
+outputs/models/*
+outputs/figures/*
+outputs/predictions/*
+
+# Allow small placeholder files if you want to keep empty output folders in git.
+!outputs/geometry/.gitkeep
+!outputs/pressure/.gitkeep
+!outputs/models/.gitkeep
+!outputs/figures/.gitkeep
+!outputs/predictions/.gitkeep
+
+# Common large numeric and binary artifacts.
+*.npy
+*.npz
+*.joblib
+*.pkl
+*.vtk
+*.vtp
+*.vtu
+*.stl
+*.obj
+
+# Streamlit local configuration and logs.
+.streamlit/secrets.toml
+*.log

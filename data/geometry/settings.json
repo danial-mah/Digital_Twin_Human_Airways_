@@ -1,0 +1,12 @@
+{
+"pointsCoordinates":"false",
+"ids":[0,-1,2135905],
+"location": "Nodal",
+"unit":null,
+"unitDimension":{"mass":0,"length":1,"time":0},
+"dimensionality":[3],
+"name":"Coordinates",
+"deformation": false,
+"pointsCoordinates": true,
+"namedSelections":{"epiglotis":[0,-1,1401],"g_buffer":[1402,-1,5467],"gl":[5468,-1,9013],"gl_buffer":[9014,-1,12145],"gll":[12146,-1,13483],"gll_buffer":[13484,-1,15710],"glll":[15711,-1,16506],"gllr":[16507,-1,17352],"glotis":[17353,-1,18400],"glr":[18401,-1,19896],"glr_buffer":[19897,-1,21949],"glrl":[21950,-1,22330],"glrr":[22331,-1,23516],"gr":[23517,-1,25311],"gr_buffer":[25312,-1,28606],"grl":[28607,-1,32705],"grl_buffer":[32706,-1,35404],"grll":[35405,-1,36177],"grlr":[36178,-1,37224],"grr":[37225,-1,38266],"grr_buffer":[38267,-1,39451],"grrl":[39452,-1,40270],"grrr":[40271,-1,41020],"larynx":[41021,-1,55308],"mouth_region":[55309,-1,74741],"rest":[74742,-1,87828],"rest-67":[87829,-1,92213],"rest-68":[92214,-1,102300],"rest-69":[102301,-1,107923],"rest-70":[107924,-1,114164],"rest-71":[114165,-1,119422],"rest-72":[119423,-1,125719],"rest-73":[125720,-1,129961],"upper_trachea_bottom":[129962,-1,137244],"upper_trachea_middle":[137245,-1,138121],"upper_trachea_top":[138122,-1,148499],"workbench5gen_for_rbf_ansys_mesh_cleaned_edge_selections":[148500,-1,2135905]}
+}
