@@ -30,6 +30,9 @@ from __future__ import annotations
 # sys lets this app add src/ to Python's import path when run by Streamlit.
 import sys
 
+# time is used to wait briefly before auto-running prediction after slider changes.
+import time
+
 # Path gives clean filesystem path handling.
 from pathlib import Path
 
@@ -44,6 +47,13 @@ import numpy as np
 
 # pandas reads DOE tables and displays metric tables.
 import pandas as pd
+
+# Plotly is used for an interactive 3D point-cloud plot when installed.
+# The app still has a 2D matplotlib fallback if Plotly is unavailable.
+try:
+    import plotly.graph_objects as go
+except Exception:
+    go = None
 
 # Streamlit builds the interactive web dashboard.
 import streamlit as st
@@ -256,6 +266,34 @@ def predict_field(
     return np.asarray(coefficients), np.asarray(reconstructed, dtype=np.float32)
 
 
+def input_signature(geometry_inputs: dict[str, float], pressure_inputs: dict[str, float]) -> tuple[tuple[str, float], ...]:
+    """Create a comparable fingerprint of the current sidebar input values.
+
+    Beginner explanation:
+    Streamlit reruns the script whenever a slider changes. We need a simple way
+    to know whether the current slider values are different from the last values
+    used for prediction. This function turns the input dictionaries into one
+    sorted tuple that can be compared safely.
+
+    Example:
+        {"A": 1.0, "B": 2.0} becomes (("geometry:A", 1.0), ("geometry:B", 2.0))
+    """
+
+    # Store all geometry and pressure input values with labels that identify their model.
+    items: list[tuple[str, float]] = []
+
+    # Add geometry input values to the signature.
+    for key, value in geometry_inputs.items():
+        items.append((f"geometry:{key}", float(value)))
+
+    # Add pressure input values to the signature.
+    for key, value in pressure_inputs.items():
+        items.append((f"pressure:{key}", float(value)))
+
+    # Sort the signature so dictionary ordering cannot affect comparison.
+    return tuple(sorted(items))
+
+
 def geometry_to_points(geometry: np.ndarray) -> tuple[np.ndarray | None, str]:
     # Delegate point reshaping to the shared binary helper.
     return reshape_values_to_points(geometry)
@@ -397,6 +435,80 @@ def plot_projection(points: np.ndarray, pressure: np.ndarray) -> plt.Figure:
     return fig
 
 
+def plot_interactive_3d_airway(points: np.ndarray, pressure: np.ndarray):
+    """Create an interactive 3D airway point cloud with zoom and rotation.
+
+    Beginner explanation:
+    Matplotlib gives us a flat image. Plotly gives us an interactive object in
+    the browser. The user can rotate, zoom in, zoom out, and pan the airway.
+    """
+
+    # If Plotly is not installed, return None so the app can use the 2D fallback.
+    if go is None:
+        return None
+
+    # Flatten pressure values so they can color the points.
+    pressure_values = pressure_to_scalar(pressure)
+
+    # Downsample the point cloud so the browser stays responsive.
+    # Showing millions of points interactively would be too slow.
+    stride = max(1, points.shape[0] // 60000)
+
+    # Keep every stride-th point.
+    sample_points = points[::stride]
+
+    # Use pressure colors only when one pressure value exists per point.
+    if pressure_values.shape[0] == points.shape[0]:
+        sample_pressure = pressure_values[::stride]
+        marker_color = sample_pressure
+        colorbar = {"title": "Pressure"}
+        colorscale = "Viridis"
+        showscale = True
+
+    # If dimensions do not match, use one solid color and skip pressure coloring.
+    else:
+        marker_color = "#2a9d8f"
+        colorbar = None
+        colorscale = None
+        showscale = False
+
+    # Create a Plotly 3D scatter trace.
+    scatter = go.Scatter3d(
+        x=sample_points[:, 0],
+        y=sample_points[:, 1],
+        z=sample_points[:, 2],
+        mode="markers",
+        marker={
+            "size": 2,
+            "color": marker_color,
+            "colorscale": colorscale,
+            "showscale": showscale,
+            "colorbar": colorbar,
+            "opacity": 0.85,
+        },
+        hovertemplate="x=%{x:.4f}<br>y=%{y:.4f}<br>z=%{z:.4f}<extra></extra>",
+    )
+
+    # Create the Plotly figure from the scatter trace.
+    fig = go.Figure(data=[scatter])
+
+    # Configure labels, margins, and 3D aspect ratio.
+    fig.update_layout(
+        title="Interactive Predicted Airway 3D View",
+        height=620,
+        margin={"l": 0, "r": 0, "t": 45, "b": 0},
+        scene={
+            "xaxis_title": "X",
+            "yaxis_title": "Y",
+            "zaxis_title": "Z",
+            "aspectmode": "data",
+        },
+    )
+
+    # Return the interactive figure.
+    return fig
+
+
 def plot_pressure_histogram(pressure: np.ndarray) -> plt.Figure:
     # Flatten pressure into scalar values.
     pressure_values = pressure_to_scalar(pressure)
@@ -517,12 +629,36 @@ def main() -> None:
 
     # Add action buttons to the sidebar.
     st.sidebar.header("Actions")
-    predict_clicked = st.sidebar.button("Predict", type="primary")
+    predict_clicked = st.sidebar.button("Predict Now", type="primary")
     save_clicked = st.sidebar.button("Save prediction as .npy")
     export_clicked = st.sidebar.button("Export prediction to .vtp")
 
+    # Build a fingerprint of current slider values so the app can detect changes.
+    current_signature = input_signature(geometry_inputs, pressure_inputs)
+
+    # Read the fingerprint that was used for the previous prediction.
+    previous_signature = st.session_state.get("last_prediction_input_signature")
+
+    # Check whether predictions are missing, which happens on first page load.
+    predictions_missing = "geometry_prediction" not in st.session_state or "pressure_prediction" not in st.session_state
+
+    # Check whether the user changed any slider value since the last prediction.
+    inputs_changed = previous_signature != current_signature
+
+    # Decide whether prediction should run now.
+    should_predict = predict_clicked or predictions_missing or inputs_changed
+
     # Keep latest predictions in session state so save/export buttons can use them.
-    if predict_clicked or "geometry_prediction" not in st.session_state:
+    if should_predict:
+        # When sliders change, wait 2 seconds before predicting.
+        # This gives a debounce-like behavior, so prediction runs automatically after a short pause.
+        if inputs_changed and not predictions_missing and not predict_clicked:
+            with st.spinner("Inputs changed. Auto-predicting in 2 seconds..."):
+                time.sleep(2)
+        else:
+            with st.spinner("Running prediction..."):
+                time.sleep(0.1)
+
         # Predict geometry coefficients and reconstruct geometry.
         geometry_coefficients, geometry_prediction = predict_field(
             geometry_inputs,
@@ -546,6 +682,7 @@ def main() -> None:
         st.session_state.pressure_coefficients = pressure_coefficients
         st.session_state.geometry_prediction = geometry_prediction
         st.session_state.pressure_prediction = pressure_prediction
+        st.session_state.last_prediction_input_signature = current_signature
 
     # Retrieve predictions from session state.
     geometry_prediction = st.session_state.geometry_prediction
@@ -626,7 +763,13 @@ def main() -> None:
     plot_col1, plot_col2 = st.columns(2)
     with plot_col1:
         if display_points is not None:
-            st.pyplot(plot_projection(display_points, pressure_prediction), clear_figure=True)
+            interactive_fig = plot_interactive_3d_airway(display_points, pressure_prediction)
+            if interactive_fig is not None:
+                st.plotly_chart(interactive_fig, use_container_width=True)
+                st.caption("Use the mouse or touch gestures to rotate, zoom, and pan the 3D airway.")
+            else:
+                st.warning("Plotly is not installed, so the app is showing a static 2D projection.")
+                st.pyplot(plot_projection(display_points, pressure_prediction), clear_figure=True)
         else:
             st.warning("No usable point coordinates were found. Showing numerical results only.")
     with plot_col2:
