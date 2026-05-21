@@ -5,3 +5,4 @@ matplotlib
 joblib
 pyvista
 streamlit
+plotly
