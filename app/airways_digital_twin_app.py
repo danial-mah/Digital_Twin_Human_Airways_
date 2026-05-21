@@ -65,25 +65,52 @@ REQUIRED_FILES = {
 }
 
 
-def missing_required_files() -> list[tuple[str, Path]]:
+def relative_path(path: Path) -> str:
+    # Convert a project path to a shorter path relative to the project root.
+    return str(path.relative_to(PROJECT_ROOT))
+
+
+def script_hint_for_file(path: Path) -> str:
+    # PCA model files are created by the POD/PCA compression script.
+    if path.name.endswith("_pca_model.joblib"):
+        return "scripts/04_pod_pca_compression.py"
+
+    # Surrogate, scaler, and feature-name files are created by the surrogate training script.
+    if (
+        path.name.endswith("_best_surrogate.joblib")
+        or path.name.endswith("_input_scaler.joblib")
+        or path.name.endswith("_feature_names.txt")
+    ):
+        return "scripts/05_train_surrogate_models.py"
+
+    # DOE CSV files are part of the dataset and should exist before training begins.
+    if path.name == "doe.csv":
+        return "scripts/01_check_dataset.py"
+
+    # Fall back to the full pipeline when the file type is unknown.
+    return "the previous pipeline scripts"
+
+
+def check_required_files() -> bool:
     # Collect required files that do not exist yet.
-    return [(label, path) for label, path in REQUIRED_FILES.items() if not path.exists()]
+    missing = [(label, path) for label, path in REQUIRED_FILES.items() if not path.exists()]
 
+    # If nothing is missing, the app can safely continue building the interface.
+    if not missing:
+        return True
 
-def show_missing_file_help(missing: list[tuple[str, Path]]) -> None:
-    # Show a clear dashboard error when required files are missing.
-    st.error("Some required model files are missing.")
+    # Show one clear error per missing file with the script that likely creates/checks it.
+    for _, path in missing:
+        st.error(
+            f"Missing file: {relative_path(path)}. "
+            f"Please run {script_hint_for_file(path)} first."
+        )
 
-    # List the missing files so the user knows exactly what is needed.
-    for label, path in missing:
-        st.write(f"- Missing {label}: `{path}`")
+    # Stop the app before model loading or interface construction can crash.
+    st.stop()
 
-    # Explain the training sequence needed to generate the missing artifacts.
-    st.info(
-        "Run the pipeline scripts first: "
-        "`03_build_snapshot_matrices.py`, `04_pod_pca_compression.py`, "
-        "and `05_train_surrogate_models.py`."
-    )
+    # This return is only for static type checkers; st.stop() halts Streamlit execution.
+    return False
 
 
 def read_feature_names(path: Path) -> list[str]:
@@ -233,6 +260,130 @@ def geometry_to_points(geometry: np.ndarray) -> tuple[np.ndarray | None, str]:
 
     # Failure case: return diagnostics instead of crashing.
     return None, f"Geometry has {flat.size} values and cannot be reshaped to (-1, 3)."
+
+
+def load_points_bin(path: Path, label: str) -> tuple[np.ndarray | None, dict[str, object]]:
+    # Start a diagnostic dictionary for this points.bin file.
+    diagnostics: dict[str, object] = {
+        f"{label}_points_file": relative_path(path),
+        f"{label}_points_file_exists": path.exists(),
+        f"{label}_points_dtype_used": None,
+        f"{label}_points_array_shape": None,
+        f"{label}_points_number_of_values": None,
+        f"{label}_points_divisible_by_3": False,
+        f"{label}_points_number_of_points": None,
+        f"{label}_points_reshape_status": "file missing",
+    }
+
+    # If points.bin is missing, return diagnostics without crashing.
+    if not path.exists():
+        return None, diagnostics
+
+    # Try float32 first because that is a common simple binary interpretation.
+    for dtype in (np.float32, np.float64):
+        # Read the binary file using the current dtype.
+        values = np.fromfile(path, dtype=dtype)
+
+        # Store general shape and value-count diagnostics.
+        diagnostics[f"{label}_points_dtype_used"] = str(np.dtype(dtype))
+        diagnostics[f"{label}_points_array_shape"] = str(values.shape)
+        diagnostics[f"{label}_points_number_of_values"] = int(values.size)
+        diagnostics[f"{label}_points_divisible_by_3"] = bool(values.size % 3 == 0)
+
+        # If the whole array is divisible by 3, reshape it directly to x, y, z points.
+        if values.size % 3 == 0:
+            points = values.reshape(-1, 3).astype(np.float32, copy=False)
+            diagnostics[f"{label}_points_number_of_points"] = int(points.shape[0])
+            diagnostics[f"{label}_points_reshape_status"] = "reshaped directly"
+            return points, diagnostics
+
+        # If one leading value makes the rest divisible by 3, skip that header-like value.
+        if values.size > 1 and (values.size - 1) % 3 == 0:
+            points = values[1:].reshape(-1, 3).astype(np.float32, copy=False)
+            diagnostics[f"{label}_points_number_of_points"] = int(points.shape[0])
+            diagnostics[f"{label}_points_reshape_status"] = "reshaped after skipping one leading value"
+            return points, diagnostics
+
+        # Record that this dtype failed before trying the fallback dtype.
+        diagnostics[f"{label}_points_reshape_status"] = f"not reshapeable as {np.dtype(dtype)}"
+
+    # Return no points if both dtype interpretations failed.
+    return None, diagnostics
+
+
+def inspect_binary_shapes(
+    geometry_prediction: np.ndarray,
+    pressure_prediction: np.ndarray,
+) -> dict[str, object]:
+    # Flatten geometry and pressure so value counts are easy to compare.
+    geometry_values = np.asarray(geometry_prediction).ravel()
+    pressure_values = np.asarray(pressure_prediction).ravel()
+
+    # Try to interpret predicted geometry as coordinates.
+    geometry_points, geometry_status = geometry_to_points(geometry_prediction)
+
+    # Load pressure points.bin separately; do not assume it is the same mesh as geometry.
+    pressure_points, pressure_points_diagnostics = load_points_bin(DATA_ROOT / "pressure" / "points.bin", "pressure")
+
+    # Load geometry points.bin separately for diagnostics and possible fallback display.
+    raw_geometry_points, geometry_points_diagnostics = load_points_bin(DATA_ROOT / "geometry" / "points.bin", "geometry")
+
+    # Count points from predicted geometry if it could be reshaped.
+    geometry_point_count = None if geometry_points is None else int(geometry_points.shape[0])
+
+    # Count pressure points from pressure points.bin if it could be reshaped.
+    pressure_point_count = None if pressure_points is None else int(pressure_points.shape[0])
+
+    # Check whether predicted pressure has one scalar value for each pressure mesh point.
+    pressure_matches_pressure_points = pressure_point_count is not None and pressure_values.size == pressure_point_count
+
+    # Check whether predicted pressure has one scalar value for each predicted geometry point.
+    pressure_matches_geometry_points = geometry_point_count is not None and pressure_values.size == geometry_point_count
+
+    # Decide which coordinates are safest for visualization.
+    if geometry_points is not None and pressure_matches_geometry_points:
+        display_points = geometry_points
+        display_mode = "3D/2D projection using predicted geometry with pressure coloring"
+    elif pressure_points is not None and pressure_matches_pressure_points:
+        display_points = pressure_points
+        display_mode = "3D/2D projection using pressure points.bin with pressure coloring"
+    elif geometry_points is not None:
+        display_points = geometry_points
+        display_mode = "2D projection using predicted geometry without pressure coloring"
+    elif raw_geometry_points is not None:
+        display_points = raw_geometry_points
+        display_mode = "2D projection using geometry points.bin without pressure coloring"
+    else:
+        display_points = None
+        display_mode = "numerical results only"
+
+    # Build a diagnostic dictionary that can be shown in the app.
+    diagnostics: dict[str, object] = {
+        "geometry_array_shape": str(tuple(np.asarray(geometry_prediction).shape)),
+        "pressure_array_shape": str(tuple(np.asarray(pressure_prediction).shape)),
+        "number_of_geometry_values": int(geometry_values.size),
+        "number_of_pressure_values": int(pressure_values.size),
+        "geometry_values_divisible_by_3": bool(geometry_values.size % 3 == 0),
+        "pressure_values_divisible_by_3": bool(pressure_values.size % 3 == 0),
+        "predicted_geometry_reshape_status": geometry_status,
+        "predicted_geometry_number_of_points": geometry_point_count,
+        "pressure_prediction_has_one_scalar_per_pressure_point": bool(pressure_matches_pressure_points),
+        "pressure_prediction_has_one_scalar_per_geometry_point": bool(pressure_matches_geometry_points),
+        "display_mode": display_mode,
+        "display_point_shape": None if display_points is None else str(tuple(display_points.shape)),
+        "display_points": display_points,
+        "geometry_points": geometry_points,
+        "pressure_points": pressure_points,
+    }
+
+    # Add pressure points.bin diagnostics.
+    diagnostics.update(pressure_points_diagnostics)
+
+    # Add geometry points.bin diagnostics.
+    diagnostics.update(geometry_points_diagnostics)
+
+    # Return diagnostics and internal arrays.
+    return diagnostics
 
 
 def pressure_to_scalar(pressure: np.ndarray) -> np.ndarray:
@@ -420,15 +571,12 @@ def main() -> None:
     # Configure the Streamlit page for a clean presentation layout.
     st.set_page_config(page_title="Airways Digital Twin", layout="wide")
 
+    # Check all required files before trying to load models or build the interface.
+    check_required_files()
+
     # Add a professional title and compact subtitle.
     st.title("Human Airways Digital Twin Dashboard")
     st.caption("DOE parameters -> surrogate models -> POD/PCA coefficients -> reconstructed airway fields")
-
-    # Check all required files before trying to load models.
-    missing = missing_required_files()
-    if missing:
-        show_missing_file_help(missing)
-        return
 
     # Load trained models, scalers, and PCA objects.
     models = load_models()
@@ -485,11 +633,17 @@ def main() -> None:
     geometry_coefficients = st.session_state.geometry_coefficients
     pressure_coefficients = st.session_state.pressure_coefficients
 
-    # Try to reshape geometry into point coordinates.
-    points, geometry_diagnostic = geometry_to_points(geometry_prediction)
+    # Inspect geometry, pressure, and points.bin shapes without assuming shared meshes.
+    shape_diagnostics = inspect_binary_shapes(geometry_prediction, pressure_prediction)
+
+    # Use predicted geometry points for geometry-based proxy metrics when available.
+    geometry_points = shape_diagnostics["geometry_points"]
+
+    # Use the safest available point set for display.
+    display_points = shape_diagnostics["display_points"]
 
     # Compute proxy metrics for presentation.
-    metrics = compute_proxy_metrics(points, pressure_prediction)
+    metrics = compute_proxy_metrics(geometry_points, pressure_prediction)
 
     # Handle save button after predictions exist.
     if save_clicked:
@@ -498,7 +652,7 @@ def main() -> None:
 
     # Handle VTP export button after predictions exist.
     if export_clicked:
-        exported_path = export_vtp(points, pressure_prediction)
+        exported_path = export_vtp(display_points, pressure_prediction)
         if exported_path:
             st.sidebar.success(f"Exported: {exported_path.name}")
 
@@ -520,12 +674,20 @@ def main() -> None:
         st.write("Pressure model inputs")
         st.dataframe(pd.DataFrame([pressure_inputs]), use_container_width=True)
 
-    # Show coefficient shapes and geometry diagnostics.
-    st.subheader("Model Diagnostics")
+    # Show coefficient shapes and binary diagnostics.
+    st.subheader("Model And Binary Diagnostics")
     diag_col1, diag_col2, diag_col3 = st.columns(3)
     diag_col1.metric("Geometry coefficients", str(tuple(geometry_coefficients.shape)))
     diag_col2.metric("Pressure coefficients", str(tuple(pressure_coefficients.shape)))
-    diag_col3.write(geometry_diagnostic)
+    diag_col3.metric("Display mode", str(shape_diagnostics["display_mode"]))
+
+    # Hide internal NumPy arrays before showing diagnostics as a table.
+    visible_diagnostics = {
+        key: value
+        for key, value in shape_diagnostics.items()
+        if key not in {"display_points", "geometry_points", "pressure_points"}
+    }
+    st.dataframe(pd.DataFrame([visible_diagnostics]), use_container_width=True)
 
     # Show proxy metrics table.
     st.subheader("Proxy Physics Metrics")
@@ -543,10 +705,10 @@ def main() -> None:
     st.subheader("Visualization")
     plot_col1, plot_col2 = st.columns(2)
     with plot_col1:
-        if points is not None:
-            st.pyplot(plot_projection(points, pressure_prediction), clear_figure=True)
+        if display_points is not None:
+            st.pyplot(plot_projection(display_points, pressure_prediction), clear_figure=True)
         else:
-            st.warning(geometry_diagnostic)
+            st.warning("No usable point coordinates were found. Showing numerical results only.")
     with plot_col2:
         st.pyplot(plot_pressure_histogram(pressure_prediction), clear_figure=True)
 
