@@ -5,9 +5,9 @@ saves the matrix as a .npy file, saves the accepted snapshot names, and compares
 the number of accepted snapshots with the number of DOE rows.
 
 Important learning note:
-The previous inspection script suggested these binary files are likely float64
-with one leading header value. This script uses float32 because that is the
-requested experiment, but the printed value counts should be checked carefully.
+The raw binary snapshot files are stored as float64 and include one leading
+header value. We read them correctly as float64, remove the header with [1:],
+then convert the cleaned data to float32 before saving the matrix.
 """
 
 # This import enables modern type-hint behavior.
@@ -35,8 +35,11 @@ DATA_ROOT = PROJECT_ROOT / "data"
 # OUTPUT_ROOT points to the folder where generated matrices will be saved.
 OUTPUT_ROOT = PROJECT_ROOT / "outputs"
 
-# SNAPSHOT_DTYPE is the binary data type requested for this script.
-SNAPSHOT_DTYPE = np.float32
+# RAW_SNAPSHOT_DTYPE is the real binary storage type used by the dataset files.
+RAW_SNAPSHOT_DTYPE = np.float64
+
+# MATRIX_DTYPE is the compact type used for the saved machine-learning matrix.
+MATRIX_DTYPE = np.float32
 
 
 def snapshot_number(path: Path) -> int:
@@ -55,22 +58,25 @@ def list_snapshot_files(snapshots_dir: Path) -> list[Path]:
     return sorted(snapshot_paths, key=snapshot_number)
 
 
-def value_count_from_file_size(path: Path, dtype: np.dtype) -> int | None:
+def cleaned_value_count_from_file_size(path: Path) -> int | None:
     # Get the size of the file in bytes.
     byte_size = path.stat().st_size
 
-    # Get how many bytes one value of the selected dtype uses.
-    bytes_per_value = np.dtype(dtype).itemsize
+    # Get how many bytes one raw float64 value uses.
+    bytes_per_value = np.dtype(RAW_SNAPSHOT_DTYPE).itemsize
 
-    # If the file size is not divisible by the dtype size, it cannot be read cleanly.
+    # If the file size is not divisible by float64 size, it cannot be read cleanly.
     if byte_size % bytes_per_value != 0:
         return None
 
-    # Convert bytes into number of dtype values.
-    return byte_size // bytes_per_value
+    # Convert bytes into number of raw float64 values.
+    raw_value_count = byte_size // bytes_per_value
+
+    # Remove one leading header value from the count.
+    return raw_value_count - 1
 
 
-def choose_consistent_snapshots(snapshot_paths: list[Path], dtype: np.dtype) -> tuple[list[Path], int | None]:
+def choose_consistent_snapshots(snapshot_paths: list[Path]) -> tuple[list[Path], int | None]:
     # Start with no expected snapshot size.
     expected_values: int | None = None
 
@@ -79,12 +85,17 @@ def choose_consistent_snapshots(snapshot_paths: list[Path], dtype: np.dtype) -> 
 
     # Inspect every snapshot file before allocating the output matrix.
     for path in snapshot_paths:
-        # Compute how many dtype values this file contains based on file size.
-        value_count = value_count_from_file_size(path, dtype)
+        # Compute how many usable values remain after removing the float64 header.
+        value_count = cleaned_value_count_from_file_size(path)
 
-        # Warn and skip files whose byte size is incompatible with this dtype.
+        # Warn and skip files whose byte size is incompatible with float64.
         if value_count is None:
-            print(f"WARNING: {path.name} byte size is not divisible by {np.dtype(dtype).itemsize}; skipping.")
+            print(f"WARNING: {path.name} byte size is not divisible by {np.dtype(RAW_SNAPSHOT_DTYPE).itemsize}; skipping.")
+            continue
+
+        # Warn and skip files that only contain a header or no usable values.
+        if value_count <= 0:
+            print(f"WARNING: {path.name} does not contain usable values after removing the header; skipping.")
             continue
 
         # Use the first valid snapshot as the expected size.
@@ -106,6 +117,17 @@ def choose_consistent_snapshots(snapshot_paths: list[Path], dtype: np.dtype) -> 
 
     # Return the accepted files and the shared number of values per snapshot.
     return valid_paths, expected_values
+
+
+def read_clean_snapshot(path: Path) -> np.ndarray:
+    # Read the raw binary snapshot using the real dataset storage type.
+    raw_values = np.fromfile(path, dtype=RAW_SNAPSHOT_DTYPE)
+
+    # Remove the first value, which acts like a header rather than field data.
+    cleaned_values = raw_values[1:]
+
+    # Convert cleaned values to float32 for a smaller saved ML matrix.
+    return cleaned_values.astype(MATRIX_DTYPE, copy=False)
 
 
 def save_snapshot_names(paths: list[Path], output_path: Path) -> None:
@@ -163,14 +185,14 @@ def build_snapshot_matrix(dataset_name: str) -> tuple[tuple[int, int] | None, in
         print("WARNING: No snapshot files found.")
         return None, 0
 
-    # Print the dtype being used for this requested build.
-    print(f"Reading snapshots with dtype: {np.dtype(SNAPSHOT_DTYPE)}")
+    # Print the raw dtype used for reading the binary source files.
+    print(f"Reading raw snapshots with dtype: {np.dtype(RAW_SNAPSHOT_DTYPE)}")
 
-    # Warn that float32 may not match the inspected binary format.
-    print("Note: Previous inspection suggested float64 with one leading header; this script uses float32 by request.")
+    # Print the saved matrix dtype.
+    print(f"Saving cleaned snapshot matrix with dtype: {np.dtype(MATRIX_DTYPE)}")
 
     # Select only snapshots with consistent value counts.
-    valid_paths, values_per_snapshot = choose_consistent_snapshots(snapshot_paths, SNAPSHOT_DTYPE)
+    valid_paths, values_per_snapshot = choose_consistent_snapshots(snapshot_paths)
 
     # Stop early if no valid snapshots remain.
     if values_per_snapshot is None or not valid_paths:
@@ -186,7 +208,7 @@ def build_snapshot_matrix(dataset_name: str) -> tuple[tuple[int, int] | None, in
     matrix = np.lib.format.open_memmap(
         matrix_path,
         mode="w+",
-        dtype=SNAPSHOT_DTYPE,
+        dtype=MATRIX_DTYPE,
         shape=(len(valid_paths), values_per_snapshot),
     )
 
@@ -195,8 +217,8 @@ def build_snapshot_matrix(dataset_name: str) -> tuple[tuple[int, int] | None, in
         # Print progress so the user can see the script is working.
         print(f"[{dataset_name}] Reading {row_index}/{len(valid_paths)}: {path.name}")
 
-        # Read the binary file as float32, according to the requested experiment.
-        values = np.fromfile(path, dtype=SNAPSHOT_DTYPE)
+        # Read as float64, remove the first header value, then convert to float32.
+        values = read_clean_snapshot(path)
 
         # Double-check the size even though we already checked by file size.
         if values.size != values_per_snapshot:
