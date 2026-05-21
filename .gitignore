@@ -44,6 +44,11 @@ outputs/predictions/*
 *.stl
 *.obj
 
+# Keep the intentionally small online demo assets in Git.
+!demo_assets/
+!demo_assets/*.npz
+!demo_assets/*.json
+
 # Streamlit local configuration and logs.
 .streamlit/secrets.toml
 *.log
