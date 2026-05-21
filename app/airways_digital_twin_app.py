@@ -12,6 +12,9 @@ simple proxy metrics, and optionally exports a ParaView-readable VTP file.
 # This import enables modern type-hint behavior.
 from __future__ import annotations
 
+# sys lets this app add src/ to Python's import path when run by Streamlit.
+import sys
+
 # Path gives clean filesystem path handling.
 from pathlib import Path
 
@@ -31,23 +34,20 @@ import pandas as pd
 import streamlit as st
 
 
-# PROJECT_ROOT points to the main project folder, one level above app/.
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+# Add src/ to the import path so the app can use shared helpers.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-# DATA_ROOT points to the raw project data folder.
-DATA_ROOT = PROJECT_ROOT / "data"
+# Import shared binary helpers for points and geometry shape inspection.
+from airways.binary import load_points_bin, reshape_values_to_points
 
-# OUTPUT_ROOT points to generated outputs.
-OUTPUT_ROOT = PROJECT_ROOT / "outputs"
+# Import shared IO helpers.
+from airways.io import load_doe, read_feature_names
 
-# MODELS_DIR points to saved PCA and surrogate models.
-MODELS_DIR = OUTPUT_ROOT / "models"
+# Import shared project paths.
+from airways.paths import DATA_ROOT, MODELS_DIR, OUTPUT_ROOT, PREDICTIONS_DIR, PROJECT_ROOT
 
-# PREDICTIONS_DIR points to saved predictions.
-PREDICTIONS_DIR = OUTPUT_ROOT / "predictions"
-
-# SMALL_EPSILON prevents division by zero in proxy resistance calculations.
-SMALL_EPSILON = 1e-12
+# Import shared proxy metrics used by scripts and app.
+from airways.proxy_physics import compute_proxy_metrics as shared_compute_proxy_metrics
 
 
 # REQUIRED_FILES lists every trained artifact needed by the dashboard.
@@ -113,11 +113,6 @@ def check_required_files() -> bool:
     return False
 
 
-def read_feature_names(path: Path) -> list[str]:
-    # Read one feature name per line and ignore empty lines.
-    return [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-
-
 @st.cache_resource
 def load_models() -> dict[str, object]:
     # Load all trained models and scalers once, then cache them across Streamlit reruns.
@@ -134,10 +129,10 @@ def load_models() -> dict[str, object]:
 @st.cache_data
 def load_doe_tables() -> tuple[pd.DataFrame, pd.DataFrame]:
     # Read geometry DOE; sep=None lets pandas detect comma or semicolon separators.
-    geometry_doe = pd.read_csv(REQUIRED_FILES["geometry DOE"], sep=None, engine="python")
+    geometry_doe = load_doe(REQUIRED_FILES["geometry DOE"])
 
     # Read pressure DOE; this file may use a different separator.
-    pressure_doe = pd.read_csv(REQUIRED_FILES["pressure DOE"], sep=None, engine="python")
+    pressure_doe = load_doe(REQUIRED_FILES["pressure DOE"])
 
     # Return both DOE tables.
     return geometry_doe, pressure_doe
@@ -247,68 +242,8 @@ def predict_field(
 
 
 def geometry_to_points(geometry: np.ndarray) -> tuple[np.ndarray | None, str]:
-    # Flatten geometry to test whether it contains x, y, z triples.
-    flat = np.asarray(geometry).ravel()
-
-    # Direct case: all values form x, y, z triples.
-    if flat.size % 3 == 0:
-        return flat.reshape(-1, 3), f"Geometry reshaped directly to ({flat.size // 3}, 3)."
-
-    # Header-like case: skip one leading value, then reshape triples.
-    if flat.size > 1 and (flat.size - 1) % 3 == 0:
-        return flat[1:].reshape(-1, 3), f"Geometry reshaped after skipping one leading value to ({(flat.size - 1) // 3}, 3)."
-
-    # Failure case: return diagnostics instead of crashing.
-    return None, f"Geometry has {flat.size} values and cannot be reshaped to (-1, 3)."
-
-
-def load_points_bin(path: Path, label: str) -> tuple[np.ndarray | None, dict[str, object]]:
-    # Start a diagnostic dictionary for this points.bin file.
-    diagnostics: dict[str, object] = {
-        f"{label}_points_file": relative_path(path),
-        f"{label}_points_file_exists": path.exists(),
-        f"{label}_points_dtype_used": None,
-        f"{label}_points_array_shape": None,
-        f"{label}_points_number_of_values": None,
-        f"{label}_points_divisible_by_3": False,
-        f"{label}_points_number_of_points": None,
-        f"{label}_points_reshape_status": "file missing",
-    }
-
-    # If points.bin is missing, return diagnostics without crashing.
-    if not path.exists():
-        return None, diagnostics
-
-    # Try float32 first because that is a common simple binary interpretation.
-    for dtype in (np.float32, np.float64):
-        # Read the binary file using the current dtype.
-        values = np.fromfile(path, dtype=dtype)
-
-        # Store general shape and value-count diagnostics.
-        diagnostics[f"{label}_points_dtype_used"] = str(np.dtype(dtype))
-        diagnostics[f"{label}_points_array_shape"] = str(values.shape)
-        diagnostics[f"{label}_points_number_of_values"] = int(values.size)
-        diagnostics[f"{label}_points_divisible_by_3"] = bool(values.size % 3 == 0)
-
-        # If the whole array is divisible by 3, reshape it directly to x, y, z points.
-        if values.size % 3 == 0:
-            points = values.reshape(-1, 3).astype(np.float32, copy=False)
-            diagnostics[f"{label}_points_number_of_points"] = int(points.shape[0])
-            diagnostics[f"{label}_points_reshape_status"] = "reshaped directly"
-            return points, diagnostics
-
-        # If one leading value makes the rest divisible by 3, skip that header-like value.
-        if values.size > 1 and (values.size - 1) % 3 == 0:
-            points = values[1:].reshape(-1, 3).astype(np.float32, copy=False)
-            diagnostics[f"{label}_points_number_of_points"] = int(points.shape[0])
-            diagnostics[f"{label}_points_reshape_status"] = "reshaped after skipping one leading value"
-            return points, diagnostics
-
-        # Record that this dtype failed before trying the fallback dtype.
-        diagnostics[f"{label}_points_reshape_status"] = f"not reshapeable as {np.dtype(dtype)}"
-
-    # Return no points if both dtype interpretations failed.
-    return None, diagnostics
+    # Delegate point reshaping to the shared binary helper.
+    return reshape_values_to_points(geometry)
 
 
 def inspect_binary_shapes(
@@ -327,6 +262,12 @@ def inspect_binary_shapes(
 
     # Load geometry points.bin separately for diagnostics and possible fallback display.
     raw_geometry_points, geometry_points_diagnostics = load_points_bin(DATA_ROOT / "geometry" / "points.bin", "geometry")
+
+    # Shorten diagnostic file paths for display inside the app.
+    for diagnostics in (pressure_points_diagnostics, geometry_points_diagnostics):
+        for key, value in list(diagnostics.items()):
+            if key.endswith("_points_file") and isinstance(value, str):
+                diagnostics[key] = relative_path(Path(value))
 
     # Count points from predicted geometry if it could be reshaped.
     geometry_point_count = None if geometry_points is None else int(geometry_points.shape[0])
@@ -392,48 +333,8 @@ def pressure_to_scalar(pressure: np.ndarray) -> np.ndarray:
 
 
 def compute_proxy_metrics(points: np.ndarray | None, pressure: np.ndarray) -> dict[str, float]:
-    # Start with pressure metrics because pressure exists even if geometry reshape fails.
-    pressure_values = pressure_to_scalar(pressure)
-
-    # Store pressure min, max, mean, and range.
-    metrics: dict[str, float] = {
-        "pressure_min": float(np.min(pressure_values)),
-        "pressure_max": float(np.max(pressure_values)),
-        "pressure_mean": float(np.mean(pressure_values)),
-        "pressure_range": float(np.max(pressure_values) - np.min(pressure_values)),
-    }
-
-    # If points are missing, fill geometry-derived metrics with NaN.
-    if points is None:
-        metrics["mean_radius_proxy"] = np.nan
-        metrics["constriction_index"] = np.nan
-        metrics["flow_capacity_proxy"] = np.nan
-        metrics["resistance_proxy"] = np.nan
-        metrics["pressure_drop_proxy"] = metrics["pressure_range"]
-        return metrics
-
-    # Compute centroid of the predicted geometry.
-    centroid = np.mean(points, axis=0)
-
-    # Compute radial distances in the xy plane.
-    radial = np.sqrt((points[:, 0] - centroid[0]) ** 2 + (points[:, 1] - centroid[1]) ** 2)
-
-    # Compute simplified geometry proxy metrics.
-    mean_radius = float(np.mean(radial))
-    min_radius = float(np.min(radial))
-    constriction = float(min_radius / mean_radius) if mean_radius > 0 else np.nan
-    flow_capacity = float(mean_radius**4) if np.isfinite(mean_radius) else np.nan
-    resistance = float(1.0 / max(flow_capacity, SMALL_EPSILON)) if np.isfinite(flow_capacity) else np.nan
-
-    # Store the requested proxy metrics.
-    metrics["mean_radius_proxy"] = mean_radius
-    metrics["constriction_index"] = constriction
-    metrics["flow_capacity_proxy"] = flow_capacity
-    metrics["resistance_proxy"] = resistance
-    metrics["pressure_drop_proxy"] = metrics["pressure_range"]
-
-    # Return all proxy metrics.
-    return metrics
+    # Delegate metric computation to the shared proxy physics module.
+    return shared_compute_proxy_metrics(points, pressure)
 
 
 def plot_projection(points: np.ndarray, pressure: np.ndarray) -> plt.Figure:

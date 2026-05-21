@@ -13,8 +13,8 @@ then convert the cleaned data to float32 before saving the matrix.
 # This import enables modern type-hint behavior.
 from __future__ import annotations
 
-# re is used to extract numbers from filenames such as snapshot100.bin.
-import re
+# sys lets this script add src/ to Python's import path when run from scripts/.
+import sys
 
 # Path gives clean filesystem path handling.
 from pathlib import Path
@@ -26,54 +26,20 @@ import numpy as np
 import pandas as pd
 
 
-# PROJECT_ROOT points to the main project folder, one level above scripts/.
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+# Add src/ to the import path so this numbered script can use shared helpers.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-# DATA_ROOT points to the folder that contains geometry/ and pressure/.
-DATA_ROOT = PROJECT_ROOT / "data"
+# Import shared project paths.
+from airways.paths import DATA_ROOT, OUTPUT_ROOT
 
-# OUTPUT_ROOT points to the folder where generated matrices will be saved.
-OUTPUT_ROOT = PROJECT_ROOT / "outputs"
-
-# RAW_SNAPSHOT_DTYPE is the real binary storage type used by the dataset files.
-RAW_SNAPSHOT_DTYPE = np.float64
-
-# MATRIX_DTYPE is the compact type used for the saved machine-learning matrix.
-MATRIX_DTYPE = np.float32
-
-
-def snapshot_number(path: Path) -> int:
-    # Search for the first number in the filename stem.
-    match = re.search(r"(\d+)", path.stem)
-
-    # Return the number if found, otherwise sort unusual names at the end.
-    return int(match.group(1)) if match else 10**12
-
-
-def list_snapshot_files(snapshots_dir: Path) -> list[Path]:
-    # Find all .bin files inside the Snapshots folder.
-    snapshot_paths = list(snapshots_dir.glob("*.bin"))
-
-    # Sort naturally so snapshot2 comes before snapshot10.
-    return sorted(snapshot_paths, key=snapshot_number)
-
-
-def cleaned_value_count_from_file_size(path: Path) -> int | None:
-    # Get the size of the file in bytes.
-    byte_size = path.stat().st_size
-
-    # Get how many bytes one raw float64 value uses.
-    bytes_per_value = np.dtype(RAW_SNAPSHOT_DTYPE).itemsize
-
-    # If the file size is not divisible by float64 size, it cannot be read cleanly.
-    if byte_size % bytes_per_value != 0:
-        return None
-
-    # Convert bytes into number of raw float64 values.
-    raw_value_count = byte_size // bytes_per_value
-
-    # Remove one leading header value from the count.
-    return raw_value_count - 1
+# Import shared binary helpers for snapshots.
+from airways.binary import (
+    DEFAULT_MATRIX_DTYPE,
+    RAW_BINARY_DTYPE,
+    cleaned_value_count_from_file_size,
+    list_snapshot_files,
+    read_clean_binary_field,
+)
 
 
 def choose_consistent_snapshots(snapshot_paths: list[Path]) -> tuple[list[Path], int | None]:
@@ -90,7 +56,7 @@ def choose_consistent_snapshots(snapshot_paths: list[Path]) -> tuple[list[Path],
 
         # Warn and skip files whose byte size is incompatible with float64.
         if value_count is None:
-            print(f"WARNING: {path.name} byte size is not divisible by {np.dtype(RAW_SNAPSHOT_DTYPE).itemsize}; skipping.")
+            print(f"WARNING: {path.name} byte size is not divisible by {np.dtype(RAW_BINARY_DTYPE).itemsize}; skipping.")
             continue
 
         # Warn and skip files that only contain a header or no usable values.
@@ -117,17 +83,6 @@ def choose_consistent_snapshots(snapshot_paths: list[Path]) -> tuple[list[Path],
 
     # Return the accepted files and the shared number of values per snapshot.
     return valid_paths, expected_values
-
-
-def read_clean_snapshot(path: Path) -> np.ndarray:
-    # Read the raw binary snapshot using the real dataset storage type.
-    raw_values = np.fromfile(path, dtype=RAW_SNAPSHOT_DTYPE)
-
-    # Remove the first value, which acts like a header rather than field data.
-    cleaned_values = raw_values[1:]
-
-    # Convert cleaned values to float32 for a smaller saved ML matrix.
-    return cleaned_values.astype(MATRIX_DTYPE, copy=False)
 
 
 def save_snapshot_names(paths: list[Path], output_path: Path) -> None:
@@ -186,10 +141,10 @@ def build_snapshot_matrix(dataset_name: str) -> tuple[tuple[int, int] | None, in
         return None, 0
 
     # Print the raw dtype used for reading the binary source files.
-    print(f"Reading raw snapshots with dtype: {np.dtype(RAW_SNAPSHOT_DTYPE)}")
+    print(f"Reading raw snapshots with dtype: {np.dtype(RAW_BINARY_DTYPE)}")
 
     # Print the saved matrix dtype.
-    print(f"Saving cleaned snapshot matrix with dtype: {np.dtype(MATRIX_DTYPE)}")
+    print(f"Saving cleaned snapshot matrix with dtype: {np.dtype(DEFAULT_MATRIX_DTYPE)}")
 
     # Select only snapshots with consistent value counts.
     valid_paths, values_per_snapshot = choose_consistent_snapshots(snapshot_paths)
@@ -208,7 +163,7 @@ def build_snapshot_matrix(dataset_name: str) -> tuple[tuple[int, int] | None, in
     matrix = np.lib.format.open_memmap(
         matrix_path,
         mode="w+",
-        dtype=MATRIX_DTYPE,
+        dtype=DEFAULT_MATRIX_DTYPE,
         shape=(len(valid_paths), values_per_snapshot),
     )
 
@@ -218,7 +173,7 @@ def build_snapshot_matrix(dataset_name: str) -> tuple[tuple[int, int] | None, in
         print(f"[{dataset_name}] Reading {row_index}/{len(valid_paths)}: {path.name}")
 
         # Read as float64, remove the first header value, then convert to float32.
-        values = read_clean_snapshot(path)
+        values = read_clean_binary_field(path)
 
         # Double-check the size even though we already checked by file size.
         if values.size != values_per_snapshot:
