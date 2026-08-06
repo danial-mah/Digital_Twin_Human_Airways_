@@ -1,0 +1,17 @@
+# Requirements for the PyQt5 desktop application
+# Install separately: pip install -r requirements_qt.txt
+
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.11.0
+PyQt5>=5.15.0
+pyvista>=0.44.0
+pyvistaqt>=0.11.0
+
+# Analytics tabs (new)
+matplotlib>=3.7.0
+
+# AI Assistant voice I/O (new — no subscription required)
+SpeechRecognition>=3.10.0   # Google free STT, no API key
+sounddevice>=0.4.6          # microphone recording (no pyaudio needed)
+pyttsx3>=2.90               # offline TTS via Windows SAPI

@@ -1,9 +1,0 @@
-{
-  "source_points": "data\\pressure\\points.bin",
-  "source_pressure_snapshot": "data\\pressure\\Snapshots\\snapshot1.bin",
-  "original_points": 2135906,
-  "demo_points": 30084,
-  "stride": 71,
-  "asset_file": "demo_assets\\airway_demo_sample.npz",
-  "important_note": "This is a lightweight visualization demo, not the full training dataset."
-}

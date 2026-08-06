@@ -1,54 +1,20 @@
-# Python cache files generated when scripts are run.
+# Python
 __pycache__/
-*.py[cod]
-
-# Local virtual environments.
+*.pyc
+*.pyo
 .venv/
 venv/
 env/
+*.egg-info/
 
-# IDE and operating-system metadata.
-.vscode/
-.idea/
+# Streamlit secrets (never commit API keys)
+.streamlit/secrets.toml
+
+# OS / editor
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
 
-# Large raw dataset binaries.
-# Keep these out of GitHub and share them separately.
-data/**/Snapshots/*
-data/**/points.bin
-!data/**/Snapshots/.gitkeep
-
-# Generated model, figure, prediction, and processed output files.
-outputs/geometry/*
-outputs/pressure/*
-outputs/models/*
-outputs/figures/*
-outputs/predictions/*
-
-# Allow small placeholder files if you want to keep empty output folders in git.
-!outputs/geometry/.gitkeep
-!outputs/pressure/.gitkeep
-!outputs/models/.gitkeep
-!outputs/figures/.gitkeep
-!outputs/predictions/.gitkeep
-
-# Common large numeric and binary artifacts.
-*.npy
-*.npz
-*.joblib
-*.pkl
-*.vtk
-*.vtp
-*.vtu
-*.stl
-*.obj
-
-# Keep the intentionally small online demo assets in Git.
-!demo_assets/
-!demo_assets/*.npz
-!demo_assets/*.json
-
-# Streamlit local configuration and logs.
-.streamlit/secrets.toml
-*.log
+# Qt build artifacts
+qt_app/**/__pycache__/

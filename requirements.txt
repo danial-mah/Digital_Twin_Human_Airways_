@@ -1,8 +1,8 @@
-numpy
-pandas
-scikit-learn
-matplotlib
-joblib
-pyvista
-streamlit
-plotly
+streamlit>=1.33.0
+numpy>=1.24.0
+pandas>=2.0.0
+plotly>=5.18.0
+scipy>=1.11.0
+scikit-learn>=1.3.0
+reportlab>=4.0.0
+anthropic>=0.25.0
